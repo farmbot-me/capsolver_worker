@@ -163,25 +163,37 @@ function connectWebSocket() {
     const { task_id, task_type, task_data } = jobData;
 
     let result;
-    if (task_type === "vercel_checkpoint") {
-      result = await handleVercelCheckpointTask(task_data);
-    } else {
+
+    try {
+      if (task_type === "vercel_checkpoint") {
+        result = await handleVercelCheckpointTask(task_data);
+      } else {
+        ws.send(
+          JSON.stringify({
+            event_type: "task_result",
+            event_data: {
+              task_id: task_id,
+              success: false,
+              error: "Unsupported task type",
+            },
+          })
+        );
+        return;
+      }
+    } catch (error) {
+      logger.error(`❌ Task ${task_id} failed with error: ${error.message}`);
       ws.send(
         JSON.stringify({
           event_type: "task_result",
           event_data: {
             task_id: task_id,
             success: false,
-            error: "Unsupported task type",
+            error: error.message,
           },
         })
       );
       return;
     }
-
-    logger.info(
-      `✅ Task ${task_id} completed with result: ${JSON.stringify(result)}`
-    );
 
     ws.send(
       JSON.stringify({
