@@ -198,7 +198,7 @@ async function handleCloudflareChallengeTask(task_data) {
 }
 
 function connectWebSocket() {
-  ws = new WebSocket("ws://localhost:8008/ws", {});
+  ws = new WebSocket("wss://capsolver-ws.farmbot.me/ws");
 
   ws.on("open", () => {
     logger.info("💡 Connected to WebSocket server");
