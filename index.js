@@ -90,33 +90,6 @@ async function handleVercelCheckpointTask(task_data) {
           ...(uaHeaders || {}),
         };
       }
-
-      const resourceType = request.resourceType();
-      if (
-        resourceType === "image" ||
-        resourceType === "media" ||
-        resourceType === "font"
-      ) {
-        request.abort();
-      } else {
-        // Refuse image, video, and audio requests
-        const blockedExts = [
-          ".png",
-          ".jpg",
-          ".jpeg",
-          ".gif",
-          ".webp",
-          ".woff2",
-          ".svg",
-          ".woff",
-        ];
-
-        if (_.some(blockedExts, (ext) => requestUrl.endsWith(ext))) {
-          request.abort();
-        } else {
-          request.continue();
-        }
-      }
     });
 
     await page.goto(page_url);
@@ -126,6 +99,81 @@ async function handleVercelCheckpointTask(task_data) {
         const pageTitle = await page.title();
         logger.info(`Current page title: ${pageTitle}`);
         if (pageTitle != "Vercel Security Checkpoint") {
+          break;
+        }
+      } catch (error) {
+      } finally {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+
+    // 获取 cookies 和请求头
+    const cookies = await page.cookies();
+    captchaResult.cookies = Object.fromEntries(
+      cookies.map((cookie) => [cookie.name, cookie.value])
+    );
+    return captchaResult;
+  } finally {
+    try {
+      await browser.close();
+    } catch (error) {
+      console.error(`Browser close error: ${error.message}`);
+    }
+  }
+}
+
+async function handleCloudflareChallengeTask(task_data) {
+  let browser;
+  try {
+    const { page_url, proxy_url } = task_data;
+    const proxy = new URL(proxy_url);
+    const connectResult = await connect({
+      ...realBrowserOption,
+      proxy: {
+        host: proxy.hostname,
+        port: proxy.port,
+        username: proxy.username,
+        password: proxy.password,
+      },
+    });
+    browser = connectResult.browser;
+    const page = connectResult.page;
+
+    const captchaResult = {
+      cookies: {},
+      headers: {},
+    };
+
+    // 监听网络请求
+    page.on("request", (request) => {
+      const requestUrl = request.url();
+      console.log(requestUrl);
+      if (requestUrl.startsWith(page_url)) {
+        const uaHeaders = {};
+        for (const [key, value] of Object.entries(request.headers())) {
+          if (
+            key.toLowerCase() === "user-agent" ||
+            key.toLowerCase().startsWith("sec-")
+          ) {
+            uaHeaders[key] = value;
+          }
+        }
+        captchaResult.headers = {
+          ...captchaResult.headers,
+          ...(uaHeaders || {}),
+        };
+      }
+    });
+
+    await page.goto(page_url);
+
+    while (true) {
+      try {
+        const cookies = await page.cookies();
+        const cookiesDict = Object.fromEntries(
+          cookies.map((cookie) => [cookie.name, cookie.value])
+        );
+        if (cookiesDict.hasOwnProperty("cf_clearance")) {
           break;
         }
       } catch (error) {
@@ -167,6 +215,8 @@ function connectWebSocket() {
     try {
       if (task_type === "vercel_checkpoint") {
         result = await handleVercelCheckpointTask(task_data);
+      } else if (task_type === "cloudflare_challenge") {
+        result = await handleCloudflareChallengeTask(task_data);
       } else {
         ws.send(
           JSON.stringify({
@@ -195,6 +245,11 @@ function connectWebSocket() {
       return;
     }
 
+    logger.info(
+      `🎉 Task ${task_id} completed successfully with result: ${JSON.stringify(
+        result
+      )}`
+    );
     ws.send(
       JSON.stringify({
         event_type: "task_result",
