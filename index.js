@@ -3,6 +3,14 @@ const _ = require("lodash");
 const { connect } = require("./lib/cjs/index.js");
 const winston = require("winston");
 
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error(`Unhandled Rejection at: ${promise} reason: ${reason}`);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.error(`Uncaught Exception: ${error}`);
+});
+
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.combine(
@@ -116,6 +124,7 @@ async function handleVercelCheckpointTask(task_data) {
     while (true) {
       try {
         const pageTitle = await page.title();
+        logger.info(`Current page title: ${pageTitle}`);
         if (pageTitle != "Vercel Security Checkpoint") {
           break;
         }
