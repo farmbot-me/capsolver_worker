@@ -46,6 +46,7 @@ const realBrowserOption = {
     defaultViewport: null,
   },
   plugins: [],
+  offScreen: true,
 };
 
 let ws;
@@ -94,6 +95,8 @@ async function handleVercelCheckpointTask(task_data) {
 
     await page.goto(page_url);
 
+    const timeout = 30000;
+    const startTime = Date.now();
     while (true) {
       try {
         const pageTitle = await page.title();
@@ -104,6 +107,9 @@ async function handleVercelCheckpointTask(task_data) {
       } catch (error) {
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 300));
+        if (Date.now() - startTime > timeout) {
+          throw new Error("Timeout");
+        }
       }
     }
 
@@ -166,7 +172,8 @@ async function handleCloudflareChallengeTask(task_data) {
     });
 
     await page.goto(page_url);
-
+    const timeout = 30000;
+    const startTime = Date.now();
     while (true) {
       try {
         const cookies = await page.cookies();
@@ -179,6 +186,9 @@ async function handleCloudflareChallengeTask(task_data) {
       } catch (error) {
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 300));
+        if (Date.now() - startTime > timeout) {
+          throw new Error("Timeout");
+        }
       }
     }
 

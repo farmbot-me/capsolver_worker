@@ -12,6 +12,7 @@ const realBrowserOption = {
     defaultViewport: null,
   },
   plugins: [],
+  offScreen: true,
 };
 
 // test('Puppeteer Extra Plugin', async () => {
