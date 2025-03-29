@@ -153,7 +153,6 @@ async function handleCloudflareChallengeTask(task_data) {
     // 监听网络请求
     page.on("request", (request) => {
       const requestUrl = request.url();
-      console.log(requestUrl);
       if (requestUrl.startsWith(page_url)) {
         const uaHeaders = {};
         for (const [key, value] of Object.entries(request.headers())) {
@@ -208,7 +207,9 @@ async function handleCloudflareChallengeTask(task_data) {
 }
 
 function connectWebSocket() {
-  ws = new WebSocket("wss://capsolver-ws.farmbot.me/ws");
+  ws = new WebSocket("wss://capsolver.farmbot.me/ws", {
+    timeout: 3000,
+  });
 
   ws.on("open", () => {
     logger.info("💡 Connected to WebSocket server");
