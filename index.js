@@ -171,7 +171,7 @@ async function handleCloudflareChallengeTask(task_data) {
     });
 
     await page.goto(page_url);
-    const timeout = 30000;
+    const timeout = 90000;
     const startTime = Date.now();
     while (true) {
       try {
