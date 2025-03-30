@@ -93,9 +93,9 @@ async function handleVercelCheckpointTask(task_data) {
       }
     });
 
-    await page.goto(page_url);
+    await page.goto(page_url, { timeout: 120000 });
 
-    const timeout = 30000;
+    const timeout = 90000;
     const startTime = Date.now();
     while (true) {
       try {
@@ -170,7 +170,7 @@ async function handleCloudflareChallengeTask(task_data) {
       }
     });
 
-    await page.goto(page_url);
+    await page.goto(page_url, { timeout: 120000 });
     const timeout = 90000;
     const startTime = Date.now();
     while (true) {
