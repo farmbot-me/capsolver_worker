@@ -46,7 +46,7 @@ const realBrowserOption = {
     defaultViewport: null,
   },
   plugins: [],
-  offScreen: false,
+  offScreen: true,
 };
 
 let ws;
