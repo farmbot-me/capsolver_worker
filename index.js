@@ -1,7 +1,12 @@
 const WebSocket = require("ws");
 const _ = require("lodash");
-const { connect } = require("./lib/cjs/index.js");
-const winston = require("winston");
+const net = require("net");
+const { connect } = require("./lib/realbrowser/index.js");
+const {
+  startTrunstileServer,
+  waitForTurnstileTaskResult,
+} = require("./lib/fake-turnstile-server/index.js");
+const { logger } = require("./lib/common/logger.js");
 
 process.on("unhandledRejection", (reason, promise) => {
   logger.error(`Unhandled Rejection at: ${promise} reason: ${reason}`);
@@ -11,33 +16,8 @@ process.on("uncaughtException", (error) => {
   logger.error(`Uncaught Exception: ${error}`);
 });
 
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  defaultMeta: { service: "capsolver-worker" },
-  transports: [
-    new winston.transports.File({ filename: "error.log", level: "error" }),
-    new winston.transports.File({ filename: "combined.log" }),
-  ],
-});
-logger.add(
-  new winston.transports.Console({
-    format: winston.format.printf(({ level, message, timestamp }) => {
-      const fixedLengthTimestamp = timestamp.padEnd(24, " ");
-      const fixedLengthLevel = level
-        .toUpperCase()
-        .padStart((6 + level.length) / 2, " ")
-        .padEnd(6, " ");
-      return `${fixedLengthTimestamp} [${fixedLengthLevel}]: ${message}`;
-    }),
-  })
-);
-
 const realBrowserOption = {
-  args: ["--start-maximized"],
+  args: ["--start-maximized", "--ignore-certificate-errors"],
   turnstile: true,
   headless: false,
   // disableXvfb: true,
@@ -49,6 +29,22 @@ const realBrowserOption = {
   offScreen: true,
 };
 
+// Find a random available port
+function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, () => {
+      const port = server.address().port;
+      server.close(() => {
+        resolve(port);
+      });
+    });
+  });
+}
+
+let trunstileServerPort;
 let ws;
 
 async function handleVercelCheckpointTask(task_data) {
@@ -206,13 +202,68 @@ async function handleCloudflareChallengeTask(task_data) {
   }
 }
 
+async function handleCloudflareTurnstileTask(task_id, task_data) {
+  let browser;
+  try {
+    const { site_key, site_url, proxy_url } = task_data;
+    const siteUrlObj = new URL(site_url);
+    const siteHost = `https://${siteUrlObj.hostname}`;
+    const fakeUrl = `${siteHost}/turnstile?sitekey=${site_key}&task_id=${task_id}`;
+    logger.info(`🔑 Generated turnstile fake url: ${fakeUrl}`);
+    let proxyOptions = {};
+    if (proxy_url) {
+      const proxy = new URL(proxy_url);
+      proxyOptions = {
+        host: proxy.hostname,
+        port: proxy.port,
+        username: proxy.username,
+        password: proxy.password,
+      };
+    } else {
+      proxyOptions = undefined;
+    }
+    const connectResult = await connect({
+      ...realBrowserOption,
+      proxy: proxyOptions,
+    });
+    browser = connectResult.browser;
+    const page = connectResult.page;
+    // 拦截所有请求
+    await page.setRequestInterception(true);
+    page.on("request", (interceptedRequest) => {
+      const url = interceptedRequest.url();
+      // 例如拦截 www.example.com 的请求
+      if (url.includes(siteHost)) {
+        interceptedRequest.continue({
+          url: url.replace(
+            siteHost,
+            `https://localhost:${trunstileServerPort}`
+          ),
+        });
+      } else {
+        interceptedRequest.continue();
+      }
+    });
+    await page.goto(fakeUrl, { timeout: 120000 });
+    const result = await waitForTurnstileTaskResult(task_id, 120000);
+    return result;
+  } finally {
+    try {
+      await browser.close();
+    } catch (error) {
+      console.error(`Browser close error: ${error.message}`);
+    }
+  }
+}
+
 function connectWebSocket() {
-  ws = new WebSocket("wss://capsolver.farmbot.me/ws", {
+  const webSocketUrl = "wss://capsolver.farmbot.me/ws";
+  ws = new WebSocket(webSocketUrl, {
     timeout: 3000,
   });
 
   ws.on("open", () => {
-    logger.info("💡 Connected to WebSocket server");
+    logger.info(`💡 Connected to WebSocket server: ${webSocketUrl}`);
   });
 
   ws.on("message", async (data) => {
@@ -228,6 +279,8 @@ function connectWebSocket() {
         result = await handleVercelCheckpointTask(task_data);
       } else if (task_type === "cloudflare_challenge") {
         result = await handleCloudflareChallengeTask(task_data);
+      } else if (task_type === "cloudflare_turnstile") {
+        result = await handleCloudflareTurnstileTask(task_id, task_data);
       } else {
         ws.send(
           JSON.stringify({
@@ -283,4 +336,23 @@ function connectWebSocket() {
   });
 }
 
-connectWebSocket();
+// Initialize and start the server
+async function initialize() {
+  try {
+    // Get a random available port
+    trunstileServerPort = await getAvailablePort();
+    logger.info(`🚀 Using port ${trunstileServerPort} for Turnstile server`);
+
+    // Start the turnstile server with the random port
+    startTrunstileServer(trunstileServerPort);
+
+    // Connect to WebSocket
+    connectWebSocket();
+  } catch (error) {
+    logger.error(`Initialization error: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// Start the application
+initialize();

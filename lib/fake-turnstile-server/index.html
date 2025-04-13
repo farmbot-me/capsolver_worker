@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Turnstile Solver</title>
+    <script
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=_turnstileCb"
+      defer
+    ></script>
+  </head>
+
+  <body>
+    <div id="turnstile-container"></div>
+  </body>
+
+  <script>
+    function getSiteKey() {
+      var search = new URLSearchParams(window.location.search);
+      return search.get("sitekey");
+    }
+
+    function getTaskId() {
+      var search = new URLSearchParams(window.location.search);
+      return search.get("task_id");
+    }
+
+    function _turnstileCb() {
+      console.debug("_turnstileCb called");
+      var sitekey = getSiteKey();
+      turnstile.render("#turnstile-container", {
+        sitekey: sitekey,
+        theme: "light",
+      });
+    }
+
+    var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function solveTurnstile() {
+      let maxWait = 30000;
+      let start = new Date().getTime();
+      while (true) {
+        var inputs = document.getElementsByTagName("input");
+        for (var input of inputs) {
+          var name = input.getAttribute("name");
+          if (name == "cf-turnstile-response") {
+            var value = input.getAttribute("value");
+            if (value) {
+              return value;
+            }
+          }
+        }
+
+        var now = new Date().getTime();
+        if (now - start > maxWait) {
+          return null;
+        }
+
+        await sleep(200);
+      }
+    }
+
+    async function submitResult(value) {
+      var sitekey = getSiteKey();
+      var taskId = getTaskId();
+      const data = {
+        value: value,
+        task_id: taskId,
+      };
+
+      fetch("{{SERVER_URL}}/api/result", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    async function main() {
+      var value = await solveTurnstile();
+      if (!value) {
+        console.error("Failed to solve Turnstile");
+        window.location.reload();
+        return;
+      }
+      await submitResult(value);
+    }
+
+    main();
+  </script>
+</html>

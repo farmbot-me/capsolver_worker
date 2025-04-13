@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { connect } = require("../../lib/cjs/index.js");
+const { connect } = require("../../lib/realbrowser/index.js");
 
 const realBrowserOption = {
   args: ["--start-maximized"],
