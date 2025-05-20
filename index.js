@@ -7,6 +7,9 @@ const {
   waitForTurnstileTaskResult,
 } = require("./lib/fake-turnstile-server/index.js");
 const { logger } = require("./lib/common/logger.js");
+const dotenv = require("dotenv");
+
+dotenv.config();
 
 process.on("unhandledRejection", (reason, promise) => {
   logger.error(`Unhandled Rejection at: ${promise} reason: ${reason}`);
@@ -257,7 +260,9 @@ async function handleCloudflareTurnstileTask(task_id, task_data) {
 }
 
 function connectWebSocket() {
-  const webSocketUrl = "wss://capsolver.farmbot.me/ws";
+  const webSocketUrl =
+    process.env.SERVER_WEBSOCKET_URL || "wss://capsolver.farmbot.me/ws";
+  logger.info(`🔑 Using WebSocket URL: ${webSocketUrl}`);
   ws = new WebSocket(webSocketUrl, {
     timeout: 3000,
   });
